@@ -2,5 +2,5 @@
 
 public class ReservationResponse
 {
-    public required string ID { get; init; }
+    public string? ID { get; init; }
 }

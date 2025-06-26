@@ -41,13 +41,13 @@ public class PracticeStatus
 
 public class ReservationStatusResponse
 {
-    public required string Id { get; init; }
-    public required string UserId { get; init; }
-    public required string WordReservationId { get; init; }
-    public required ReservationStatus Status { get; init; }
+    public string? Id { get; init; }
+    public string? UserId { get; init; }
+    public string? WordReservationId { get; init; }
+    public ReservationStatus? Status { get; init; }
     public DateTime? UpdatedAt { get; init; }
-    public required CandidateStatus Candidate { get; init; }
-    public required ExamStatus Exam { get; init; }
+    public CandidateStatus? Candidate { get; init; }
+    public ExamStatus? Exam { get; init; }
     public string? IsReminderSent { get; init; }
     public string? IsFirstReminderSent { get; init; }
     public string? Invoice { get; init; }

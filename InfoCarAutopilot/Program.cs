@@ -5,6 +5,8 @@ using InfoCarAutopilot.DTO;
 
 Win32Helpers.ToggleOSSleepPrevention(true);
 
+List<string> bannedExams = [];
+
 AppSettings settings = await LoadAppSettings();
 
 JWTExtractor jwtExtractor = new();
@@ -59,14 +61,15 @@ while (true)
             .SelectMany(sd => sd.ScheduledHours)
             .SelectMany(sh => sh.PracticeExams)
             .Where(exam => exam.Date < DateTime.UtcNow.Date.AddDays(settings.DaysFromNowToCheck))
+            .Where(exam => !bannedExams.Contains(exam.Id))
             .OrderBy(exam => exam.Date)
             .ToList();
 
         Console.WriteLine("Possible exam dates fulfilling criteria: {0}", validExams.Count);
-        if (validExams.Count > 0)
-        {
-            PracticeExam examToReserve = validExams.First();
 
+        List<(Task<ReservationResponse> ReservationTask, PracticeExam Exam)> reservationTasks = [];
+        foreach (var examToReserve in validExams)
+        {
             Console.WriteLine("Attempting to reserve this one: {0}", JsonSerializer.Serialize(examToReserve));
 
             ReservationRequest reservationDto = new()
@@ -97,28 +100,52 @@ while (true)
             };
 
             Console.WriteLine("Making reservation...");
-            ReservationResponse reservation = await client.MakeReservation(reservationDto);
+            Task<ReservationResponse> reservationTask = client.MakeReservation(reservationDto);
+            reservationTasks.Add((reservationTask, examToReserve));
             await File.AppendAllTextAsync("./logs.txt", $"Making reservation for {examToReserve.Date}\n");
             Console.WriteLine("Reservation created");
+
+        }
+
+        ReservationResponse[] reservations = await Task.WhenAll(reservationTasks.Select(r => r.ReservationTask));
+
+        foreach (var (task, exam) in reservationTasks)
+        {
+            var reservationResponse = task.Result;
+            if (reservationResponse?.ID == null)
+                continue;
 
             ReservationStatusResponse? reservationStatus = null;
             do
             {
                 await Task.Delay(1500);
                 Console.WriteLine("Checking reservation status...");
-                reservationStatus = await client.CheckReservationStatus(reservation.ID);
+                reservationStatus = await client.CheckReservationStatus(reservationResponse.ID);
 
-            } while (reservationStatus.Status.Status == "CREATED");
+            } while (reservationStatus?.Status?.Status == "CREATED");
+
+            if (reservationStatus?.Status == null)
+            {
+                bannedExams.Add(exam.Id);
+                continue;
+            }
+
+            await File.AppendAllTextAsync("./logs.txt", $"Reservation result: {reservationStatus.Status.Status} ({reservationStatus.Status.Message})\n");
+
+            if (reservationStatus.Status.Status == "CANCELLED")
+            {
+                Console.WriteLine($"Reservation auto-cancelled. Reason: '{reservationStatus.Status.Message}'");
+                bannedExams.Add(exam.Id);
+            }
+            else
+            {
+                Console.WriteLine($"SIGN ME IN! Reservation ID: {reservationResponse.ID}");
+                await Alarm();
+            }
 
             Console.WriteLine("Process completed");
             Console.WriteLine("Reservation status: {0}", reservationStatus.Status.Status);
             Console.WriteLine("Reservation message: {0}", reservationStatus.Status.Message);
-
-            await File.AppendAllTextAsync("./logs.txt", $"Reservation result: {reservationStatus.Status.Status} ({reservationStatus.Status.Message})\n");
-            if (reservationStatus.Status.Message == "Kandydat jest już zapisany na egzamin lub posiada aktywną rezerwację na wybraną kategorię.")
-            {
-                await Alarm();
-            }
         }
     }
     catch (Exception ex)
