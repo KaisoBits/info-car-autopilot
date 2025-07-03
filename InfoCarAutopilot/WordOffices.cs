@@ -1,6 +1,6 @@
 ﻿namespace InfoCarAutopilot;
 
-public class WordOffices
+public static class WordOffices
 {
-    public static readonly string Wroclaw = "3";
+    public const string Wroclaw = "3";
 }
